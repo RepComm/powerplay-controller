@@ -1,21 +1,15 @@
 package org.firstinspires.ftc.teamcode;
 
+import org.firstinspires.ftc.teamcode.Omnidrive;
+
 import com.qualcomm.hardware.bosch.BNO055IMU;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.Servo;
-import com.vuforia.Vec2F;
 
-import org.firstinspires.ftc.robotcore.external.matrices.VectorF;
-import org.firstinspires.ftc.robotcore.external.navigation.MotionDetection;
 import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
 
-import java.util.ArrayList;
-import java.util.List;
-
-@TeleOp(name="Main OpMode", group="Main")
+@TeleOp(name = "Main OpMode", group = "Main")
 public class Main extends OpMode {
   
   //variables for motors
@@ -28,26 +22,18 @@ public class Main extends OpMode {
   Omnidrive drive;
   DcMotor[] driveMotors;
   
-  void init_motors () {
+  void init_motors() {
     int motorCount = 3;
     
     this.drive = new Omnidrive(motorCount);
     this.driveMotors = new DcMotor[motorCount];
     
-    for (int i=0; i<motorCount; i++) {
-      this.driveMotors[i] = this.hardwareMap.get(DcMotor.class, String.format("drive_%d", i) );
+    for (int i = 0; i < motorCount; i++) {
+      this.driveMotors[i] = this.hardwareMap.get(DcMotor.class, String.format("drive_%d", i));
     }
-    
-    this.telemetry.addData("Drive", "Angle radians %.2f, %.2f, %.2f",
-      this.drive.motorAnglesRadians[0],
-      this.drive.motorAnglesRadians[1],
-      this.drive.motorAnglesRadians[2]
-    );
-    this.telemetry.update();
-    
   }
   
-  void init_sensors () {
+  void init_sensors() {
     
     //init 9 axis gyroscope (built into controller)
     
@@ -65,19 +51,42 @@ public class Main extends OpMode {
     
   }
   
+  //controller left stick x,y
   private Vec2 inputDirection;
+  //magnitude of left stick x,y
   private float inputMagnitude;
+  
+  private float desiredHeadingRadians;
+  private float actualHeadingRadians;
+  
+  //stop buttons firing too fast to toggle
+  private Debounce dAlign;
+  //align mode, toggled with A button in loop()
+  private boolean align;
   
   @Override
   public void init() {
     
+    //create a vector to store our left stick x,y
     this.inputDirection = new Vec2();
     this.inputMagnitude = 0;
+    
+    //300 milliseconds between A being pressed before triggering again
+    this.dAlign = new Debounce(300);
+    
+    //align mode, keeps to desired orientation (turn) when set to true
+    //essentially compass based turning
+    this.align = false;
+    
+    //where we want to be facing
+    this.desiredHeadingRadians = 0;
+    //where we're actually facing
+    this.actualHeadingRadians = 0;
     
     //say hello
     this.telemetry.addData("main", "Hello World");
     this.telemetry.update();
-  
+    
     //init motors so we can use them later
     this.init_motors();
     
@@ -85,19 +94,23 @@ public class Main extends OpMode {
     this.init_sensors();
   }
   
+  Orientation o;
   
+  void update_sensors() {
+    this.o = this.gyro.getAngularOrientation();
+    
+    this.actualHeadingRadians = this.o.firstAngle;
+  }
   
-  @Override
-  public void loop() {
+  float driveDirectionRadians = 0;
+  float headingTolerance = MathEx.DEG2RAD * 5f;
+  float headingAdjust = 0;
+  float turnRaw = 0;
+  float rad360 = MathEx.DEG2RAD * 360;
+  
+  void handle_input() {
     
-    //get direction
-    Orientation o = this.gyro.getAngularOrientation();
-    
-    //send orientation as text so we can see it
-    this.telemetry.addData(
-        "Orientation", "{ x: %.2f, y: %.2f, z: %.2f }", + o.firstAngle, o.secondAngle, o.thirdAngle
-    );
-    
+    //DRIVING DIRECTION / SPEED
     //copy stick direction
     this.inputDirection.set(
       this.gamepad1.left_stick_x,
@@ -110,39 +123,78 @@ public class Main extends OpMode {
     //get rid of magnitude from actual direction vector
     this.inputDirection.normalize();
     
-    float angleRadians = this.inputDirection.arctan2();
+    this.driveDirectionRadians = this.inputDirection.arctan2();
     
-    this.drive.update(
-      angleRadians, this.inputMagnitude
+    
+    //HEADING / TURNING
+    this.turnRaw = this.gamepad1.right_stick_x;
+    
+    if (Float.isNaN(this.turnRaw)) this.turnRaw = 0.0f; //TODO - check if necessary
+    
+    //change desired heading based on joystick
+    this.desiredHeadingRadians -= this.turnRaw / 25.0f; //divide by 25 to slow the rate down, TODO - make adjustable
+    this.desiredHeadingRadians %= MathEx.DEG2RAD * 360;
+    
+    this.headingAdjust = 0;
+    float headingDiff = (float) Math.atan2(
+      Math.sin(
+        this.desiredHeadingRadians - this.actualHeadingRadians
+      ),
+      Math.cos(this.desiredHeadingRadians - this.actualHeadingRadians)
+    );
+    if (Math.abs(headingDiff) > headingTolerance) this.headingAdjust = (headingDiff / rad360) * 2;
+    if (this.headingAdjust < -1) this.headingAdjust = -1;
+    if (this.headingAdjust > 1) this.headingAdjust = 1;
+    
+    if (this.gamepad1.a && this.dAlign.update()) this.align = !this.align;
+    
+    if (this.align) {
+      this.telemetry.addData("Heading", "Desired: %.2f, Actual: %.2f, Adjust: %.2f",
+        this.desiredHeadingRadians,
+        this.actualHeadingRadians,
+        headingAdjust
+      );
+    }
+  }
+  
+  void update_motors() {
+    //send orientation as text so we can see it
+    this.telemetry.addData(
+      "Orientation", "{ x: %.2f, y: %.2f, z: %.2f }",
+      o.firstAngle,
+      o.secondAngle,
+      o.thirdAngle
     );
     
-    float turn = this.gamepad1.right_stick_x;
-    
-    this.telemetry.addData("Turn", "Value : %.2f", turn);
-    this.telemetry.update();
+    this.drive.update(
+      this.driveDirectionRadians, this.inputMagnitude
+    );
     
     float motorPower = 0;
     
     //apply drive calculations to physical motors
-    for (int i=0; i<this.drive.motorOutput.length; i++) {
-      motorPower = (this.drive.motorOutput[i] / 2) - (turn / 2);
+    for (int i = 0; i < this.drive.motorOutput.length; i++) {
+      if (this.align) {
+        motorPower = (this.drive.motorOutput[i] / 2) + this.headingAdjust;
+        if (Float.isNaN(motorPower)) motorPower = this.headingAdjust;
+      } else {
+        motorPower = (this.drive.motorOutput[i] / 2) - (this.turnRaw / 2);
+        if (Float.isNaN(motorPower)) motorPower = -(this.turnRaw / 2);
+      }
       
-      
-      this.driveMotors[i].setPower( motorPower );
+      this.driveMotors[i].setPower(motorPower);
     }
+  }
   
-    this.telemetry.addData("Drive output", "%.2f, %.2f, %.2f",
-      this.drive.motorOutput[0],
-      this.drive.motorOutput[1],
-      this.drive.motorOutput[2]
-    );
+  @Override
+  public void loop() {
+    this.update_sensors();
+    
+    this.handle_input();
+    
+    this.update_motors();
+    
     this.telemetry.update();
-  
     
-    
-    //check if A is pressed on gamepad 1
-    if (this.gamepad1.a) {
-    
-    }
   }
 }

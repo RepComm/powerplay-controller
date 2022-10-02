@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode;
 
+import org.firstinspires.ftc.teamcode.MathEx;
+
 /**
  * Ported from https://github.com/RepComm/vec2d/blob/master/src/vec.ts
  *
@@ -78,13 +80,10 @@ public class Vec2 {
       )
     );
   }
-  public static float lerp (float from, float to, float by) {
-    return from*(1-by)+to*by;
-  }
   public Vec2 lerp (Vec2 other, float by) {
     this.set(
-      lerp(this.x, other.x, by),
-      lerp(this.y, other.y, by)
+      MathEx.lerp(this.x, other.x, by),
+      MathEx.lerp(this.y, other.y, by)
     );
     return this;
   }

@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode;
 
+import org.firstinspires.ftc.teamcode.MathEx;
+
 public class Omnidrive {
   
   public float[] motorAnglesRadians;
@@ -7,8 +9,6 @@ public class Omnidrive {
   public float[] motorOutput;
   
   private int motorCount;
-  
-  public static float DEG2RAD = (float)Math.PI / 180;
   
   /**Create a drive with a certain number of motors equally rotated around 360deg*/
   public Omnidrive (int motorCount) {
@@ -34,19 +34,15 @@ public class Omnidrive {
       float degrees = factor * 360;
       
       //convert to radians
-      float radians = DEG2RAD * degrees;
+      float radians = MathEx.DEG2RAD * degrees;
       
-      radians += DEG2RAD * 90;
+      radians += MathEx.DEG2RAD * 90;
       
       //set motor angle
       this.setMotorAngleRadians(
         i, radians
       );
     }
-  }
-  
-  public static float clampRadians (float theta) {
-    return theta %= (DEG2RAD * 360);
   }
   
   public void setMotorAngleRadians(int index, float angleRadians) {
