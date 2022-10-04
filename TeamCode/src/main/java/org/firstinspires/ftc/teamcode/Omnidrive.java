@@ -1,7 +1,5 @@
 package org.firstinspires.ftc.teamcode;
 
-import org.firstinspires.ftc.teamcode.MathEx;
-
 public class Omnidrive {
   
   public float[] motorAnglesRadians;

@@ -1,5 +1,8 @@
 package org.firstinspires.ftc.teamcode;
 
+import static org.firstinspires.ftc.teamcode.MathEx.DEG2RAD;
+import static org.firstinspires.ftc.teamcode.MathEx.boolToInt;
+
 import org.firstinspires.ftc.teamcode.Omnidrive;
 
 import com.qualcomm.hardware.bosch.BNO055IMU;
@@ -29,7 +32,7 @@ public class Main extends OpMode {
     this.driveMotors = new DcMotor[motorCount];
     
     for (int i = 0; i < motorCount; i++) {
-      this.driveMotors[i] = this.hardwareMap.get(DcMotor.class, String.format("drive_%d", i));
+      this.driveMotors[i] = this.hardwareMap.get(DcMotor.class, String.format("drive_%d", i, 0.1f));
     }
   }
   
@@ -108,6 +111,8 @@ public class Main extends OpMode {
   float turnRaw = 0;
   float rad360 = MathEx.DEG2RAD * 360;
   
+  Debounce dPerpTurn = new Debounce(200);
+  
   void handle_input() {
     
     //DRIVING DIRECTION / SPEED
@@ -135,6 +140,13 @@ public class Main extends OpMode {
     this.desiredHeadingRadians -= this.turnRaw / 25.0f; //divide by 25 to slow the rate down, TODO - make adjustable
     this.desiredHeadingRadians %= MathEx.DEG2RAD * 360;
     
+    //left/right bumper change heading angle by 90deg
+    int turn = boolToInt(this.gamepad1.right_bumper) - boolToInt(this.gamepad1.left_bumper);
+    if (turn != 0 && this.dPerpTurn.update()) {
+      this.desiredHeadingRadians -= (90f * turn)*DEG2RAD;
+    }
+    
+    //calculate align mode heading (even if not used while updating motors)
     this.headingAdjust = 0;
     float headingDiff = (float) Math.atan2(
       Math.sin(
@@ -146,8 +158,10 @@ public class Main extends OpMode {
     if (this.headingAdjust < -1) this.headingAdjust = -1;
     if (this.headingAdjust > 1) this.headingAdjust = 1;
     
+    //toggle align mode based on gamepad A button and debounce settings
     if (this.gamepad1.a && this.dAlign.update()) this.align = !this.align;
     
+    //log stuff if in align mode
     if (this.align) {
       this.telemetry.addData("Heading", "Desired: %.2f, Actual: %.2f, Adjust: %.2f",
         this.desiredHeadingRadians,
@@ -166,34 +180,44 @@ public class Main extends OpMode {
       o.thirdAngle
     );
     
+    //calculate drive.motorOutput array
     this.drive.update(
       this.driveDirectionRadians, this.inputMagnitude
     );
     
+    //store variable for motor power
     float motorPower = 0;
     
     //apply drive calculations to physical motors
     for (int i = 0; i < this.drive.motorOutput.length; i++) {
+      
+      //if in align mode, add motor output to headingAdjust so we can match gyro
       if (this.align) {
         motorPower = (this.drive.motorOutput[i] / 2) + this.headingAdjust;
         if (Float.isNaN(motorPower)) motorPower = this.headingAdjust;
-      } else {
+        
+      } else { //otherwise just bias the motor output with the raw turn value from the joystick
         motorPower = (this.drive.motorOutput[i] / 2) - (this.turnRaw / 2);
         if (Float.isNaN(motorPower)) motorPower = -(this.turnRaw / 2);
       }
       
+      //finally output the motor power to the specific motor
       this.driveMotors[i].setPower(motorPower);
     }
   }
   
   @Override
   public void loop() {
+    //read from sensors (gyro)
     this.update_sensors();
     
+    //read and calculate gamepad inputs
     this.handle_input();
     
+    //output to motors
     this.update_motors();
     
+    //anything that needs logged will now do so
     this.telemetry.update();
     
   }

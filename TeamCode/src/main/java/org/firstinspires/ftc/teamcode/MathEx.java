@@ -8,4 +8,7 @@ public class MathEx {
   public static float wrap (float value, float max) {
     return value % max;
   }
+  public static int boolToInt (boolean v) {
+    return v ? 1 : 0;
+  }
 }

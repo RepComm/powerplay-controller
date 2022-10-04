@@ -16,3 +16,8 @@ Omnidrive - math to calculate driving in a direction given arbitrary wheel count
 Debounce - think windows 'sticky keys' feature
 Vec2 - 2d vector math library (ported from npm @repcomm/vec2 typescript module)
 Main - Main OpMode, left stick = omni-drive, right stick = turn/align turn, A = toggle align/turn mode
+
+A : toggle align mode vs raw turn mode
+Right/Left bumper : turn 90 degrees (only in align mode)
+Left stick : drive direction / magnitude
+Right stick X: turn / align turn
